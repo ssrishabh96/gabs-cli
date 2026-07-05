@@ -22,7 +22,7 @@ from rich.spinner import Spinner
 
 from . import __version__
 from .client import GabsClient
-from .commands import all_command_names, find_command
+from .commands import all_command_names, find_command, extract_command_extra
 from .config import Config, HISTORY_FILE, CONFIG_DIR
 from .display import (
     console,
@@ -158,7 +158,9 @@ class Repl:
         if text.startswith("/"):
             cmd = find_command(text)
             if cmd:
-                self._send_and_display(cmd.agent_command, cmd.cmd_type, cmd.metadata)
+                extra = extract_command_extra(text)
+                agent_text = f"{cmd.agent_command} {extra}".strip() if extra else cmd.agent_command
+                self._send_and_display(agent_text, cmd.cmd_type, cmd.metadata)
             else:
                 print_error(f"Unknown command: {text.split()[0]}. Type /help for commands.")
             return

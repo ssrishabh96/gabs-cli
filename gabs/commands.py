@@ -91,12 +91,21 @@ COMMANDS: list[Command] = [
 
 
 def find_command(name: str) -> Command | None:
-    """Look up a command by name or alias (case-insensitive)."""
-    name_lower = name.lower().lstrip("/")
+    """Look up a command by name or alias (case-insensitive).
+    
+    Matches on the first word only, so '/market some extra text' matches 'market'.
+    """
+    first_word = name.split()[0].lower().lstrip("/") if name.strip() else ""
     for cmd in COMMANDS:
-        if cmd.name == name_lower or name_lower in cmd.aliases:
+        if cmd.name == first_word or first_word in cmd.aliases:
             return cmd
     return None
+
+
+def extract_command_extra(text: str) -> str:
+    """Extract any text after the command name, e.g. '/market how's Monday' -> "how's Monday"."""
+    parts = text.strip().split(None, 1)
+    return parts[1] if len(parts) > 1 else ""
 
 
 def all_command_names() -> list[str]:

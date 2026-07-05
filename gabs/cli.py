@@ -20,7 +20,7 @@ import click
 from . import __version__
 from .config import Config
 from .client import GabsClient
-from .commands import find_command, COMMANDS
+from .commands import find_command, extract_command_extra, COMMANDS
 from .display import (
     console,
     print_banner,
@@ -119,7 +119,9 @@ def _oneshot(query: str, config: Config) -> None:
         # Check if it's a built-in command
         cmd = find_command(query)
         if cmd:
-            client.send_command(cmd.agent_command, cmd.cmd_type, cmd.metadata)
+            extra = extract_command_extra(query)
+            agent_text = f"{cmd.agent_command} {extra}".strip() if extra else cmd.agent_command
+            client.send_command(agent_text, cmd.cmd_type, cmd.metadata)
         else:
             client.send_command(query)
 
