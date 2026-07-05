@@ -180,14 +180,19 @@ class Repl:
             if not self._connect():
                 return
 
-        # Show what we're sending (only for free-form, not built-in commands)
-        # print_you(command, self.config.show_timestamps)
-
         # Send
         self.client.send_command(command, cmd_type, metadata)
 
+        # Poll for response in a background thread
+        response_holder: list[dict[str, Any] | None] = [None]
+
+        def _poll():
+            response_holder[0] = self.client.wait_for_response()
+
+        poll_thread = threading.Thread(target=_poll, daemon=True)
+        poll_thread.start()
+
         # Wait with spinner
-        response = None
         spinner_text = "gabs is thinking…"
 
         with Live(
@@ -197,14 +202,16 @@ class Repl:
         ) as live:
             start = time.monotonic()
             while time.monotonic() - start < self.config.timeout:
-                if self.client._response_event.wait(timeout=0.1):
-                    response = self.client._response
+                poll_thread.join(timeout=0.5)
+                if not poll_thread.is_alive():
                     break
                 elapsed = int(time.monotonic() - start)
                 if elapsed > 5:
                     live.update(
                         Spinner("dots", text=f"[dim cyan]{spinner_text} ({elapsed}s)[/dim cyan]")
                     )
+
+        response = response_holder[0]
 
         if response is None:
             print_warn(f"No response after {self.config.timeout}s. Gabs might be offline.")
