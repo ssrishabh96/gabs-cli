@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "Talk to Gabs from your terminal — MQTT-powered personal AI bridge"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 authors = [{name = "Rishabh Agrawal", email = "ss.rishabh94@gmail.com"}]
 keywords = ["cli", "mqtt", "ai", "assistant"]
 classifiers = [
