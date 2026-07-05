@@ -7,10 +7,9 @@ Rich for output rendering.
 
 from __future__ import annotations
 
-import sys
-import time
 import signal
 import threading
+import time
 from typing import Any
 
 from prompt_toolkit import PromptSession
@@ -28,7 +27,6 @@ from .display import (
     console,
     print_banner,
     print_mini_banner,
-    print_you,
     print_gabs,
     print_gabs_panel,
     print_error,
@@ -40,10 +38,8 @@ from .display import (
     clear_screen,
 )
 
-# ── Prompt Style ───────────────────────────────────────────────────────────────
-
 PROMPT_STYLE = Style.from_dict({
-    "prompt": "#00d7af bold",     # Cyan-green
+    "prompt": "#00d7af bold",
     "arrow":  "#00d7af",
 })
 
@@ -57,10 +53,8 @@ class Repl:
         self.client = GabsClient(config)
         self._running = False
 
-        # Ensure config dir exists for history
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
-        # Prompt session with history + completion
         self.session = PromptSession(
             history=FileHistory(str(HISTORY_FILE)),
             completer=WordCompleter(
@@ -72,23 +66,17 @@ class Repl:
             enable_history_search=True,
         )
 
-    # ── Main Loop ──────────────────────────────────────────────────────────
-
     def run(self) -> None:
-        """Start the REPL."""
         self._running = True
 
-        # Connect
         if not self._connect():
             return
 
-        # Banner
         if self.compact:
             print_mini_banner()
         else:
             print_banner(__version__)
 
-        # Handle Ctrl-C gracefully
         signal.signal(signal.SIGINT, self._handle_interrupt)
 
         try:
@@ -107,18 +95,13 @@ class Repl:
                     continue
 
                 self._handle_input(text)
-
         finally:
-            self._disconnect()
-
-    # ── Input Handler ──────────────────────────────────────────────────────
+            self.client.disconnect()
 
     def _handle_input(self, text: str) -> None:
-        """Route user input to the right handler."""
-
-        # Meta commands (local, no agent round-trip)
         low = text.lower()
 
+        # ── Local meta commands (no agent round-trip) ──────────────────
         if low in ("/quit", "/q", "/exit"):
             print_info("see ya ✌️")
             self._running = False
@@ -141,34 +124,33 @@ class Repl:
             return
 
         if low.startswith("/timeout"):
-            parts = text.split()
-            if len(parts) == 2:
-                try:
-                    new_timeout = int(parts[1])
-                    self.config.timeout = new_timeout
-                    self.config.save()
-                    print_success(f"Timeout set to {new_timeout}s")
-                except ValueError:
-                    print_error("Usage: /timeout <seconds>")
-            else:
-                print_info(f"Current timeout: {self.config.timeout}s")
+            self._handle_timeout(text)
             return
 
-        # Built-in commands (agent round-trip with structured metadata)
+        # ── Hermes local commands ──────────────────────────────────────
+        if low in ("/hermes", "/hm"):
+            self._hermes_status()
+            return
+
+        # ── Built-in commands (agent round-trip) ───────────────────────
         if text.startswith("/"):
             cmd = find_command(text)
             if cmd:
                 extra = extract_command_extra(text)
-                agent_text = f"{cmd.agent_command} {extra}".strip() if extra else cmd.agent_command
+                agent_text = (
+                    f"{cmd.agent_command} {extra}".strip()
+                    if extra
+                    else cmd.agent_command
+                )
                 self._send_and_display(agent_text, cmd.cmd_type, cmd.metadata)
             else:
-                print_error(f"Unknown command: {text.split()[0]}. Type /help for commands.")
+                print_error(
+                    f"Unknown command: {text.split()[0]}. Type /help for commands."
+                )
             return
 
-        # Free-form query
+        # ── Free-form query ────────────────────────────────────────────
         self._send_and_display(text)
-
-    # ── Send & Display ─────────────────────────────────────────────────────
 
     def _send_and_display(
         self,
@@ -176,29 +158,26 @@ class Repl:
         cmd_type: str = "query",
         metadata: dict[str, Any] | None = None,
     ) -> None:
-        """Send command to agent and display response with a spinner."""
         if not self.client.is_connected:
             print_error("Not connected. Reconnecting…")
             if not self._connect():
                 return
 
-        # Send
-        self.client.send_command(command, cmd_type, metadata)
+        if not self.client.send_command(command, cmd_type, metadata):
+            print_error("Failed to send command — check GitHub access.")
+            return
 
-        # Poll for response in a background thread
-        response_holder: list[dict[str, Any] | None] = [None]
+        # Poll in background thread
+        result_holder: list[dict[str, Any] | None] = [None]
 
         def _poll():
-            response_holder[0] = self.client.wait_for_response()
+            result_holder[0] = self.client.wait_for_response()
 
         poll_thread = threading.Thread(target=_poll, daemon=True)
         poll_thread.start()
 
-        # Wait with spinner
-        spinner_text = "gabs is thinking…"
-
         with Live(
-            Spinner("dots", text=f"[dim cyan]{spinner_text}[/dim cyan]"),
+            Spinner("dots", text="[dim cyan]gabs is thinking…[/dim cyan]"),
             console=console,
             transient=True,
         ) as live:
@@ -210,56 +189,83 @@ class Repl:
                 elapsed = int(time.monotonic() - start)
                 if elapsed > 5:
                     live.update(
-                        Spinner("dots", text=f"[dim cyan]{spinner_text} ({elapsed}s)[/dim cyan]")
+                        Spinner(
+                            "dots",
+                            text=f"[dim cyan]gabs is thinking… ({elapsed}s)[/dim cyan]",
+                        )
                     )
 
-        response = response_holder[0]
+        response = result_holder[0]
 
         if response is None:
-            print_warn(f"No response after {self.config.timeout}s. Gabs might be offline.")
-            print_info("Your command was queued — it'll be processed when the listener runs.")
+            print_warn(
+                f"No response after {self.config.timeout}s. "
+                f"Gabs might be offline."
+            )
+            print_info(
+                "Your command was queued — it'll process when the listener runs."
+            )
             return
 
-        # Display response
-        text = response.get("text", response.get("response", str(response)))
+        resp_text = response.get("text", response.get("response", str(response)))
         title = response.get("title")
 
         if title:
-            print_gabs_panel(title, text)
+            print_gabs_panel(title, resp_text)
         else:
-            print_gabs(text, self.config.show_timestamps)
-
-    # ── Connection ─────────────────────────────────────────────────────────
+            print_gabs(resp_text, self.config.show_timestamps)
 
     def _connect(self) -> bool:
-        """Verify GitHub API access."""
-        console.print("[gabs.muted]🔌 connecting…[/gabs.muted]", end="\r")
-        ok = self.client.connect()
-        if ok:
-            console.print("[gabs.success]✓[/gabs.success] [gabs.muted]connected to GitHub[/gabs.muted]          ")
+        console.print(
+            "[gabs.muted]🔌 connecting…[/gabs.muted]", end="\r"
+        )
+        if self.client.connect():
+            console.print(
+                "[gabs.success]✓[/gabs.success] "
+                "[gabs.muted]connected to GitHub[/gabs.muted]          "
+            )
             return True
         else:
-            print_error("Could not connect to GitHub — check your token with /config")
+            print_error(
+                "Could not connect to GitHub — check your token with /config"
+            )
             print_info("Run [bold]gabs setup[/bold] to reconfigure.")
             return False
 
-    def _disconnect(self) -> None:
-        self.client.disconnect()
-
-    # ── Status ─────────────────────────────────────────────────────────────
-
     def _show_status(self) -> None:
         status = "🟢 connected" if self.client.is_connected else "🔴 disconnected"
-        print_gabs_panel("Status", f"""
+        print_gabs_panel(
+            "Status",
+            f"""
 **Connection:** {status}
 **GitHub repo:** `{self.config.github_repo}`
 **Namespace:** `{self.config.namespace}`
-**ntfy.sh topic:** `{self.config.ntfy_res_topic}`
+**ntfy topic:** `{self.config.ntfy_res_topic}`
 **Timeout:** {self.config.timeout}s
 **History:** `{HISTORY_FILE}`
-""")
+""",
+        )
 
-    # ── Signal Handling ────────────────────────────────────────────────────
+    def _handle_timeout(self, text: str) -> None:
+        parts = text.split()
+        if len(parts) == 2:
+            try:
+                val = int(parts[1])
+                self.config.timeout = val
+                self.config.save()
+                print_success(f"Timeout set to {val}s")
+            except ValueError:
+                print_error("Usage: /timeout <seconds>")
+        else:
+            print_info(f"Current timeout: {self.config.timeout}s")
+
+    def _hermes_status(self) -> None:
+        """Quick Hermes handoff check from the REPL."""
+        from .hermes import read_collab, format_collab_status
+
+        content = read_collab(self.client)
+        status_text = format_collab_status(content)
+        print_gabs_panel("Hermes ↔ Gabs", status_text)
 
     def _handle_interrupt(self, signum: int, frame: Any) -> None:
         console.print()

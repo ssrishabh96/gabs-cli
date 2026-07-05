@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gabs-cli"
-version = "1.0.0"
-description = "Talk to Gabs from your terminal — MQTT-powered personal AI bridge"
+version = "1.1.0"
+description = "Talk to Gabs from your terminal — GitHub API bridge with Hermes Agent integration"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.9"
 authors = [{name = "Rishabh Agrawal", email = "ss.rishabh94@gmail.com"}]
-keywords = ["cli", "mqtt", "ai", "assistant"]
+keywords = ["cli", "ai", "assistant", "hermes", "agent"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -18,6 +18,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",

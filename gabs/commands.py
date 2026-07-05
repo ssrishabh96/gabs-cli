@@ -1,15 +1,14 @@
 """Built-in command handlers for gabs CLI.
 
-Each command is a shortcut that maps to a specific agent query with
-structured metadata so the server-side listener can fast-path it.
+Each command maps to a specific agent query with structured metadata
+so the server-side listener can fast-path it. Extra text after the
+command name is appended to the query.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Callable
+from dataclasses import dataclass, field
 
-# ── Command Registry ───────────────────────────────────────────────────────────
 
 @dataclass
 class Command:
@@ -21,7 +20,6 @@ class Command:
     metadata: dict | None = None
 
 
-# All built-in commands
 COMMANDS: list[Command] = [
     Command(
         name="market",
@@ -87,15 +85,20 @@ COMMANDS: list[Command] = [
         agent_command="Give me a quick immigration status update — timeline, upcoming deadlines, any new policy changes.",
         metadata={"space": "india-immigration-tracker", "fast_path": "immigration_status"},
     ),
+    Command(
+        name="hermes",
+        aliases=["hm"],
+        description="Hermes Agent — handoff status & tasks",
+        cmd_type="builtin",
+        agent_command="Check the Hermes Agent COLLAB.md for any pending handoffs or tasks between Gabs and Hermes.",
+        metadata={"fast_path": "hermes_status"},
+    ),
 ]
 
 
-def find_command(name: str) -> Command | None:
-    """Look up a command by name or alias (case-insensitive).
-    
-    Matches on the first word only, so '/market some extra text' matches 'market'.
-    """
-    first_word = name.split()[0].lower().lstrip("/") if name.strip() else ""
+def find_command(text: str) -> Command | None:
+    """Look up a command by first word (name or alias), case-insensitive."""
+    first_word = text.split()[0].lower().lstrip("/") if text.strip() else ""
     for cmd in COMMANDS:
         if cmd.name == first_word or first_word in cmd.aliases:
             return cmd
@@ -103,19 +106,24 @@ def find_command(name: str) -> Command | None:
 
 
 def extract_command_extra(text: str) -> str:
-    """Extract any text after the command name, e.g. '/market how's Monday' -> "how's Monday"."""
+    """Return text after the command name: '/market how's Monday' -> "how's Monday"."""
     parts = text.strip().split(None, 1)
     return parts[1] if len(parts) > 1 else ""
 
 
 def all_command_names() -> list[str]:
-    """Return all command names and aliases, prefixed with /."""
+    """All command names and aliases, prefixed with /, for tab completion."""
     names: list[str] = []
     for cmd in COMMANDS:
         names.append(f"/{cmd.name}")
         for alias in cmd.aliases:
             names.append(f"/{alias}")
-    # Add meta-commands
-    names.extend(["/help", "/h", "/?", "/status", "/st", "/config", "/c",
-                  "/clear", "/cl", "/quit", "/q", "/exit", "/timeout"])
+    names.extend([
+        "/help", "/h", "/?",
+        "/status", "/st",
+        "/config", "/c",
+        "/clear", "/cl",
+        "/timeout",
+        "/quit", "/q", "/exit",
+    ])
     return sorted(set(names))

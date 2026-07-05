@@ -1,187 +1,114 @@
-# gabs-cli
+# gabs CLI
 
-Talk to **Gabs** from your terminal. A GitHub-powered CLI that bridges your MacBook to your Hatch AI assistant, with instant ntfy.sh notifications.
-
-```
-   ██████   █████  ██████  ███████
-  ██       ██   ██ ██   ██ ██
-  ██   ███ ███████ ██████  ███████
-  ██    ██ ██   ██ ██   ██      ██
-   ██████  ██   ██ ██████  ███████
-```
+Talk to Gabs from your terminal. Open source, runs on macOS.
 
 ## Install
 
 ```bash
-# One command — pip from GitHub
-pip install git+https://github.com/ssrishabh96/gabs-cli.git
-
-# Or clone first
-git clone https://github.com/ssrishabh96/gabs-cli.git
-cd gabs-cli
-pip install .
+pip3 install git+https://github.com/ssrishabh96/gabs-cli.git
 ```
 
-### Shell alias (optional)
+If `gabs` isn't found after install, add Python's bin to your PATH:
+```bash
+echo 'export PATH="$HOME/Library/Python/3.9/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
 
-`pip install` creates the `gabs` command automatically. If you want a shorter alias:
+## Setup
 
 ```bash
-echo 'alias g="gabs"' >> ~/.zshrc && source ~/.zshrc
+gabs setup
 ```
 
-## Quick Start
+You'll need a GitHub Personal Access Token with `repo` scope for the
+`ssrishabh96/hatch-backup` private repo. Create one at
+[github.com/settings/tokens](https://github.com/settings/tokens/new?scopes=repo).
 
-```bash
-gabs
-```
-
-First run auto-configures everything:
-
-```
-   ██████   █████  ██████  ███████
-  ██       ██   ██ ██   ██ ██
-  ██   ███ ███████ ██████  ███████
-  ██    ██ ██   ██ ██   ██      ██
-   ██████  ██   ██ ██████  ███████
-
-Welcome to gabs CLI — let's get you connected.
-
-✓ Generated namespace: 24b68cb80f424126
-✓ Found GitHub token from gh CLI
-  Use this token? [Y/n]: Y
-  GitHub repo [ssrishabh96/hatch-backup]:
-✓ GitHub connection verified
-✓ Setup complete!
-```
-
-If you have the `gh` CLI installed and authenticated, gabs auto-detects the token. Otherwise, paste a [GitHub PAT](https://github.com/settings/tokens) with repo scope.
+Or if you have the `gh` CLI installed, gabs auto-detects your token.
 
 ## Usage
 
-### Interactive Chat
-
+### Interactive REPL
 ```bash
-gabs
+gabs          # Full REPL with history, tab completion, Rich output
+gabs -c       # Compact mode (no banner)
 ```
 
-Opens a REPL with history, tab completion, and rich markdown rendering:
-
-```
-you → what's happening with META today?
-
-gabs →
-META is at $612.91, up 8.8%…
-
-you → /market
-
-gabs →
-┌ Watchlist Snapshot ─────────────────────────┐
-│ META  $612.91  ▲8.8%  Arete:BUY  KK:NEUTRAL │
-│ QQQ   $523.15  ▲1.2%  Arete:BUY  KK:BUY     │
-│ …                                             │
-└───────────────────────────────────────────────┘
-```
-
-### One-Shot Queries
-
+### One-shot
 ```bash
-gabs "what's my watchlist looking like?"
-gabs market
-gabs blogs
-gabs deals
+gabs "how's the market looking?"
+gabs /market
+gabs /signals
 ```
 
-### Built-in Commands
+### Built-in commands
 
 | Command | Alias | Description |
 |---------|-------|-------------|
-| `/market` | `/m` | Watchlist snapshot (META, QQQ, TSLA, SPCX, SMH) |
-| `/blogs` | `/b` | Latest engineering blog posts |
-| `/deals` | `/d` | Active deal alerts |
-| `/jobs` | `/j` | Latest job listings |
+| `/market` | `/m` | Watchlist snapshot |
 | `/signals` | `/s` | Trading signals (Arete + KayKim) |
-| `/spaces` | `/sp` | List all active Spaces |
-| `/forge` | `/f` | Resilience log from The Forge |
-| `/immigration` | `/imm` | Immigration tracker status |
-| `/status` | `/st` | Connection status |
-| `/config` | `/c` | Show configuration |
-| `/timeout N` | — | Set response timeout (seconds) |
-| `/help` | `/h`, `/?` | Show help |
-| `/clear` | `/cl` | Clear screen |
-| `/quit` | `/q`, `/exit` | Exit |
+| `/blogs` | `/b` | Latest engineering blogs |
+| `/deals` | `/d` | Active deal alerts |
+| `/jobs` | `/j` | Job listings |
+| `/spaces` | `/sp` | List all Spaces |
+| `/forge` | `/f` | Resilience log |
+| `/immigration` | `/imm` | Immigration tracker |
+| `/hermes` | `/hm` | Hermes Agent handoff status |
+| `/help` | `/h` | Show all commands |
 
-### Subcommands
+Extra text after a command is passed through:
+```bash
+gabs "/market how's Monday looking?"
+```
+
+## Hermes Agent Integration
+
+Bridge gabs with [Hermes Agent](https://github.com/NousResearch/hermes-agent)
+running locally on your Mac.
 
 ```bash
-gabs setup     # Re-run first-time setup
-gabs config    # Show current config
-gabs status    # Check GitHub connection
+# Install the gabs skill into Hermes
+gabs hermes install
+
+# Initialize the shared handoff doc
+gabs hermes init
+
+# Check handoff status
+gabs hermes status
+
+# Integration info
+gabs hermes info
 ```
 
-## How It Works
+Once installed, Hermes can call `gabs "query"` as a terminal tool for
+cloud tasks (market data, web search, Spaces, scheduling). COLLAB.md
+in the hatch-backup repo provides async handoffs between both agents.
+
+## Architecture
 
 ```
-┌──────────────┐    GitHub API   ┌───────────────┐    git pull     ┌──────────────┐
-│  MacBook CLI │ ──────────────► │   GitHub      │ ◄──────────── │  Hatch VM    │
-│  (gabs)      │                 │   (private    │ ──────────── ► │  (Gabs)      │
-│              │ ◄─── ntfy.sh ── │    repo)      │   git push     │              │
-└──────────────┘   notification  └───────────────┘                └──────────────┘
+Mac (local):
+  Terminal → gabs CLI → GitHub API (writes command.json)
+                       ← GitHub API (reads response.json)
+  Hermes Agent → gabs CLI (terminal tool)
+               → COLLAB.md (async handoffs)
+
+Cloud (Hatch VM):
+  Cron (30s) → listener.py → reads command.json
+                            → agent processes with full capabilities
+                            → writes response.json + ntfy.sh ping
 ```
 
-1. **You** type a command in `gabs`
-2. CLI writes `command.json` to your private GitHub repo via API
-3. CLI pings **ntfy.sh** (open source) as a notification
-4. **Gabs** (Hatch cron) checks for pending commands every minute
-5. Gabs processes the command with full agent capabilities
-6. Gabs writes `response.json` to GitHub + pings ntfy.sh
-7. **CLI** gets the ntfy notification, reads the response, renders it with Rich
+- Transport: GitHub API (HTTPS) + ntfy.sh (open source push)
+- Config: `~/.gabs/config.yaml` (chmod 600)
+- History: `~/.gabs/history`
 
-Average latency: **30-60 seconds**. All data travels through your private GitHub repo — nothing on public brokers.
-
-## Configuration
-
-Stored at `~/.gabs/config.yaml` (chmod 600):
-
-```yaml
-namespace: 24b68cb80f424126
-github:
-  repo: ssrishabh96/hatch-backup
-  token: ghp_...
-ntfy:
-  server: https://ntfy.sh
-timeout: 120
-poll_interval: 3
-theme: dark
-show_timestamps: true
-max_history: 1000
-```
-
-## Requirements
-
-- Python 3.10+
-- macOS (M1/M2/M3) or Linux
-- GitHub account with repo access
-- Internet connection
-
-## Dependencies
-
-All pure Python:
-
-- `rich` — terminal formatting & markdown rendering
-- `click` — CLI framework
-- `prompt-toolkit` — interactive REPL with history & completion
-- `pyyaml` — config management
-
-No native extensions. No compiled binaries. Installs in seconds on M1.
-
-## Uninstall
+## Upgrading
 
 ```bash
-pip uninstall gabs-cli
-rm -rf ~/.gabs
+pip3 install --force-reinstall git+https://github.com/ssrishabh96/gabs-cli.git
 ```
 
 ## License
 
-MIT — [Rishabh Agrawal](https://github.com/ssrishabh96)
+MIT

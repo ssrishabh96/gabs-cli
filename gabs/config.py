@@ -108,6 +108,10 @@ class Config:
         return self._data.get("ntfy", {}).get("server", "https://ntfy.sh")
 
     @property
+    def collab_path(self) -> str:
+        return "gabs-collab/COLLAB.md"
+
+    @property
     def ntfy_cmd_topic(self) -> str:
         return f"gabs-{self.namespace}-cmd"
 

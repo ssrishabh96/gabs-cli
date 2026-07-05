@@ -1,8 +1,8 @@
 """GitHub API + ntfy.sh transport client for gabs CLI.
 
 Commands: CLI -> GitHub API file -> Hatch cron reads -> processes -> writes response -> CLI reads
-Notifications: ntfy.sh provides instant push when response is ready (open source).
-Fallback: GitHub API polling every few seconds if ntfy misses.
+Notifications: ntfy.sh provides instant push when response is ready.
+Fallback: GitHub API polling every few seconds.
 """
 
 from __future__ import annotations
@@ -28,12 +28,12 @@ class GabsClient:
     def __init__(self, config: Config) -> None:
         self.config = config
         self._connected = False
-        self._response: dict[str, Any] | None = None
-        self._response_event = threading.Event()
+        self._command_ts: float = 0.0  # Track when command was sent
 
     # ── Connection ─────────────────────────────────────────────────────────
 
     def connect(self, timeout: float = 10.0) -> bool:
+        """Verify GitHub API access by reading the repo."""
         try:
             resp = self._github_api("GET", f"repos/{self.config.github_repo}")
             if resp and resp.get("full_name"):
@@ -43,6 +43,16 @@ class GabsClient:
             logger.error("GitHub connection failed: %s", exc)
         self._connected = False
         return False
+
+    def verify_write_access(self) -> bool:
+        """Verify we can write to the repo (not just read)."""
+        test_path = f"gabs-inbox/.write-test-{int(time.time())}"
+        ok = self._write_github_file(
+            test_path, "test", "gabs-cli: write access check",
+        )
+        if ok:
+            self._delete_github_file(test_path, "gabs-cli: cleanup write test")
+        return ok
 
     def disconnect(self) -> None:
         self._connected = False
@@ -59,18 +69,18 @@ class GabsClient:
         cmd_type: str = "query",
         metadata: dict[str, Any] | None = None,
     ) -> bool:
+        """Write command to GitHub and ping ntfy. Returns True on success."""
+        self._command_ts = time.time()
+
         payload = {
             "v": 1,
             "type": cmd_type,
             "command": command,
-            "ts": time.time(),
+            "ts": self._command_ts,
             "client": "gabs-cli",
         }
         if metadata:
             payload["meta"] = metadata
-
-        self._response = None
-        self._response_event.clear()
 
         ok = self._write_github_file(
             self.config.command_path,
@@ -91,67 +101,70 @@ class GabsClient:
     # ── Wait for Response ──────────────────────────────────────────────────
 
     def wait_for_response(self, timeout: int | None = None) -> dict[str, Any] | None:
+        """Poll GitHub (+ ntfy wake-up) for a response to the last sent command."""
         timeout = timeout or self.config.timeout
         deadline = time.monotonic() + timeout
-        cmd_ts = time.time()
 
-        # Start ntfy listener in background
+        # Use the timestamp from when we sent the command, not now
+        cmd_ts = self._command_ts if self._command_ts > 0 else time.time()
+
+        # ntfy wake-up event — lets us interrupt the poll sleep early
+        wake_event = threading.Event()
+
         ntfy_thread = threading.Thread(
             target=self._ntfy_listen,
-            args=(self.config.ntfy_res_topic, deadline),
+            args=(self.config.ntfy_res_topic, deadline, wake_event),
             daemon=True,
         )
         ntfy_thread.start()
 
-        # Poll GitHub as primary + ntfy as interrupt
+        # Poll GitHub for response
         while time.monotonic() < deadline:
-            if self._response_event.is_set() and self._response:
-                return self._response
-
             response_text = self._read_github_file(self.config.response_path)
             if response_text:
                 try:
                     data = json.loads(response_text)
                     resp_ts = data.get("ts", 0)
-                    if resp_ts >= cmd_ts - 5:
-                        self._response = data
-                        self._response_event.set()
-                        # Clean up
+                    # Accept if response timestamp is within 30s before command
+                    # (covers clock skew between Mac and Hatch VM)
+                    if resp_ts >= cmd_ts - 30:
+                        # Clean up response file (best effort)
                         self._delete_github_file(
-                            self.config.response_path,
-                            "gabs-cli: consumed",
+                            self.config.response_path, "gabs-cli: consumed",
                         )
-                        return self._response
+                        return data
                 except json.JSONDecodeError:
                     pass
 
+            # Sleep until ntfy wakes us or poll interval elapses
             remaining = deadline - time.monotonic()
             wait_time = min(self.config.poll_interval, max(remaining, 0))
             if wait_time > 0:
-                self._response_event.wait(timeout=wait_time)
-                self._response_event.clear()
+                wake_event.wait(timeout=wait_time)
+                wake_event.clear()
 
         return None
 
-    def send_and_wait(
-        self,
-        command: str,
-        cmd_type: str = "query",
-        timeout: int | None = None,
-        metadata: dict[str, Any] | None = None,
-    ) -> dict[str, Any] | None:
-        if not self.send_command(command, cmd_type, metadata):
-            return None
-        return self.wait_for_response(timeout)
+    # ── GitHub File Ops ────────────────────────────────────────────────────
+
+    def read_file(self, filepath: str) -> str | None:
+        """Read a file from the GitHub repo. Public for COLLAB.md access."""
+        return self._read_github_file(filepath)
+
+    def write_file(self, filepath: str, content: str, message: str) -> bool:
+        """Write a file to the GitHub repo. Public for COLLAB.md access."""
+        return self._write_github_file(filepath, content, message)
 
     # ── GitHub API ─────────────────────────────────────────────────────────
 
-    def _github_api(self, method: str, path: str, body: dict | None = None) -> dict | None:
+    def _github_api(
+        self, method: str, path: str, body: dict | None = None
+    ) -> dict | None:
         url = f"https://api.github.com/{path}"
         headers = {
             "Authorization": f"token {self.config.github_token}",
             "Accept": "application/vnd.github.v3+json",
-            "User-Agent": "gabs-cli/1.0",
+            "User-Agent": "gabs-cli/1.1",
         }
         data = json.dumps(body).encode() if body else None
         req = Request(url, data=data, headers=headers, method=method)
@@ -161,13 +174,20 @@ class GabsClient:
         except HTTPError as e:
             if e.code == 404:
                 return None
-            logger.error("GitHub API %d: %s", e.code, e.read().decode()[:200])
+            error_body = ""
+            try:
+                error_body = e.read().decode()[:200]
+            except Exception:
+                pass
+            logger.error("GitHub API %d: %s", e.code, error_body)
             return None
         except (URLError, TimeoutError) as e:
             logger.error("GitHub API error: %s", e)
             return None
 
-    def _write_github_file(self, filepath: str, content: str, message: str) -> bool:
+    def _write_github_file(
+        self, filepath: str, content: str, message: str
+    ) -> bool:
         path = f"repos/{self.config.github_repo}/contents/{quote(filepath, safe='/')}"
         existing = self._github_api("GET", path)
         sha = existing.get("sha") if existing else None
@@ -203,9 +223,12 @@ class GabsClient:
             headers = {
                 "Authorization": f"token {self.config.github_token}",
                 "Accept": "application/vnd.github.v3+json",
-                "User-Agent": "gabs-cli/1.0",
+                "User-Agent": "gabs-cli/1.1",
             }
-            req = Request(url, data=json.dumps(body).encode(), headers=headers, method="DELETE")
+            req = Request(
+                url, data=json.dumps(body).encode(),
+                headers=headers, method="DELETE",
+            )
             with urlopen(req, timeout=15):
                 return True
         except Exception:
@@ -223,7 +246,10 @@ class GabsClient:
         except Exception:
             pass
 
-    def _ntfy_listen(self, topic: str, deadline: float) -> None:
+    def _ntfy_listen(
+        self, topic: str, deadline: float, wake_event: threading.Event
+    ) -> None:
+        """Subscribe to ntfy SSE stream; set wake_event when a message arrives."""
         url = f"{self.config.ntfy_server}/{topic}/sse"
         try:
             remaining = max(deadline - time.monotonic(), 5)
@@ -234,7 +260,7 @@ class GabsClient:
                         break
                     decoded = line.decode("utf-8").strip()
                     if decoded.startswith("data:"):
-                        self._response_event.set()
+                        wake_event.set()
                         break
         except Exception:
             pass

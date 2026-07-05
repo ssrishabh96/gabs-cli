@@ -45,7 +45,7 @@ LOGO = r"""[bold cyan]
 LOGO_MINI = "[bold cyan]⚡ gabs[/bold cyan]"
 
 
-def print_banner(version: str = "1.0.0") -> None:
+def print_banner(version: str = "1.1.0") -> None:
     """Print the startup banner."""
     console.print(LOGO)
     console.print(
@@ -58,24 +58,20 @@ def print_banner(version: str = "1.0.0") -> None:
 
 
 def print_mini_banner() -> None:
-    """Print a compact one-line banner."""
     console.print(f"{LOGO_MINI} [gabs.muted]connected[/gabs.muted]")
 
 
 # ── Messages ───────────────────────────────────────────────────────────────────
 
 def print_you(text: str, show_ts: bool = True) -> None:
-    """Print a user message."""
     ts = _ts() if show_ts else ""
     console.print(f"{ts}[gabs.you]you →[/gabs.you] {text}")
 
 
 def print_gabs(text: str, show_ts: bool = True) -> None:
-    """Print a Gabs response."""
     ts = _ts() if show_ts else ""
     console.print()
     console.print(f"{ts}[gabs.gabs]gabs →[/gabs.gabs]")
-    # Render as markdown for rich formatting
     try:
         console.print(Markdown(text), width=min(console.width, 100))
     except Exception:
@@ -84,7 +80,6 @@ def print_gabs(text: str, show_ts: bool = True) -> None:
 
 
 def print_gabs_panel(title: str, body: str) -> None:
-    """Print a Gabs response inside a panel."""
     console.print()
     panel = Panel(
         Markdown(body),
@@ -99,7 +94,6 @@ def print_gabs_panel(title: str, body: str) -> None:
 
 
 def print_table(title: str, headers: list[str], rows: list[list[str]]) -> None:
-    """Print a formatted table."""
     table = Table(
         title=title,
         box=box.SIMPLE_HEAVY,
@@ -135,16 +129,11 @@ def print_info(msg: str) -> None:
     console.print(f"[gabs.info]ℹ[/gabs.info] {msg}")
 
 
-def print_waiting() -> None:
-    console.print("[gabs.muted]⏳ waiting for gabs…[/gabs.muted]", end="\r")
-
-
 def print_connecting() -> None:
     console.print("[gabs.muted]🔌 connecting…[/gabs.muted]", end="\r")
 
 
 def print_config(data: dict[str, Any]) -> None:
-    """Print configuration as a panel."""
     lines = []
     for key, val in data.items():
         if isinstance(val, dict):
@@ -157,27 +146,37 @@ def print_config(data: dict[str, Any]) -> None:
 
 
 def print_help() -> None:
-    """Print help for interactive mode."""
     help_text = """
 **Built-in Commands**
 
 | Command | Alias | Description |
 |---------|-------|-------------|
-| `/help` | `/h`, `/?` | Show this help |
 | `/market` | `/m` | Watchlist snapshot |
+| `/signals` | `/s` | Trading signals (Arete + KayKim) |
 | `/blogs` | `/b` | Latest engineering blogs |
 | `/deals` | `/d` | Active deal alerts |
 | `/jobs` | `/j` | Latest job listings |
-| `/signals` | `/s` | Trading signals |
 | `/spaces` | `/sp` | List all Spaces |
+| `/forge` | `/f` | The Forge — resilience log |
+| `/immigration` | `/imm` | Immigration tracker |
+| `/hermes` | `/hm` | Hermes Agent handoff status |
+
+**Meta Commands**
+
+| Command | Alias | Description |
+|---------|-------|-------------|
+| `/help` | `/h`, `/?` | Show this help |
 | `/status` | `/st` | Connection status |
 | `/config` | `/c` | Show configuration |
+| `/timeout N` | | Set response timeout |
 | `/clear` | `/cl` | Clear screen |
 | `/quit` | `/q`, `/exit` | Exit gabs |
 
-**Free-form queries** — just type anything else and Gabs will process it.
-
-**One-shot mode** — `gabs "your question here"` from your shell.
+**Tips**
+- Add text after any command: `/market how's Monday looking?`
+- Free-form: just type anything for a full agent response
+- One-shot: `gabs "your question"` from your shell
+- Hermes: `gabs hermes install` to set up the Hermes Agent bridge
 """
     print_gabs_panel("Help", help_text)
 
@@ -185,7 +184,6 @@ def print_help() -> None:
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _ts() -> str:
-    """Timestamp string."""
     return f"[gabs.ts]{time.strftime('%H:%M')}[/gabs.ts] "
 
 
