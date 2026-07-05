@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gabs-cli"
+version = "1.0.0"
+description = "Talk to Gabs from your terminal — MQTT-powered personal AI bridge"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [{name = "Rishabh Agrawal", email = "ss.rishabh94@gmail.com"}]
+keywords = ["cli", "mqtt", "ai", "assistant"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Communications :: Chat",
+]
+dependencies = [
+    "rich>=13.0",
+    "click>=8.0",
+    "prompt-toolkit>=3.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+gabs = "gabs.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ssrishabh96/gabs-cli"
+Repository = "https://github.com/ssrishabh96/gabs-cli"
+
+[tool.setuptools.packages.find]
+include = ["gabs*"]
