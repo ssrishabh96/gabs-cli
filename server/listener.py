@@ -20,11 +20,26 @@ import sys
 import time
 from pathlib import Path
 
-NAMESPACE = "24b68cb80f424126"
 REPO_DIR = Path.home() / "workspace" / "gabs-inbox-repo"
 REPO_URL = "https://github.com/ssrishabh96/hatch-backup.git"
 NTFY_SERVER = "https://ntfy.sh"
-INBOX_DIR = f"gabs-inbox/{NAMESPACE}"
+INBOX_ROOT = "gabs-inbox"
+
+
+def _detect_namespace() -> str | None:
+    """Find the first namespace dir with a command.json, or the only namespace."""
+    inbox = REPO_DIR / INBOX_ROOT
+    if not inbox.exists():
+        return None
+    ns_dirs = [d.name for d in inbox.iterdir() if d.is_dir() and d.name != ".git"]
+    if not ns_dirs:
+        return None
+    # If any has a pending command, prefer that
+    for ns in ns_dirs:
+        if (inbox / ns / "command.json").exists():
+            return ns
+    # Otherwise return first one
+    return ns_dirs[0]
 
 
 def _run(cmd: list[str], cwd: Path | None = None, check: bool = True) -> str:
@@ -80,19 +95,39 @@ def _ntfy_ping(topic: str, message: str) -> None:
 # ── Commands ───────────────────────────────────────────────────────────────────
 
 def check_command() -> str | None:
-    """Check for a pending command. Returns JSON string or None."""
+    """Check for a pending command across all namespaces. Returns JSON string or None."""
     _ensure_repo()
-    cmd_file = REPO_DIR / INBOX_DIR / "command.json"
+    ns = _detect_namespace()
+    if not ns:
+        return None
+    cmd_file = REPO_DIR / INBOX_ROOT / ns / "command.json"
     if cmd_file.exists():
         content = cmd_file.read_text().strip()
         if content:
+            # Stash namespace for respond/clear to use
+            _ACTIVE_NS_FILE.write_text(ns)
             return content
     return None
+
+
+def _get_active_ns() -> str | None:
+    """Get the namespace from the last check_command call."""
+    if _ACTIVE_NS_FILE.exists():
+        return _ACTIVE_NS_FILE.read_text().strip()
+    return _detect_namespace()
+
+
+_ACTIVE_NS_FILE = Path("/tmp/gabs-active-ns")
 
 
 def publish_response(message: str, title: str | None = None) -> bool:
     """Write response.json, push, and notify."""
     _ensure_repo()
+    ns = _get_active_ns()
+    if not ns:
+        print("No active namespace found", file=sys.stderr)
+        return False
+
     payload = {
         "v": 1,
         "type": "response",
@@ -102,14 +137,14 @@ def publish_response(message: str, title: str | None = None) -> bool:
     if title:
         payload["title"] = title
 
-    resp_dir = REPO_DIR / INBOX_DIR
+    resp_dir = REPO_DIR / INBOX_ROOT / ns
     resp_dir.mkdir(parents=True, exist_ok=True)
     resp_file = resp_dir / "response.json"
     resp_file.write_text(json.dumps(payload, indent=2))
 
     try:
         _git_push("gabs: response")
-        _ntfy_ping(f"gabs-{NAMESPACE}-res", "response ready")
+        _ntfy_ping(f"gabs-{ns}-res", "response ready")
         return True
     except Exception as e:
         print(f"Push failed: {e}", file=sys.stderr)
@@ -119,7 +154,10 @@ def publish_response(message: str, title: str | None = None) -> bool:
 def clear_command() -> bool:
     """Remove the pending command file."""
     _ensure_repo()
-    cmd_file = REPO_DIR / INBOX_DIR / "command.json"
+    ns = _get_active_ns()
+    if not ns:
+        return True
+    cmd_file = REPO_DIR / INBOX_ROOT / ns / "command.json"
     if cmd_file.exists():
         cmd_file.unlink()
         try:

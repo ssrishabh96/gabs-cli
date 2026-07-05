@@ -223,15 +223,15 @@ class Repl:
     # ── Connection ─────────────────────────────────────────────────────────
 
     def _connect(self) -> bool:
-        """Connect to the MQTT broker."""
-        console.print("[gabs.muted]🔌 connecting to broker…[/gabs.muted]", end="\r")
+        """Verify GitHub API access."""
+        console.print("[gabs.muted]🔌 connecting…[/gabs.muted]", end="\r")
         ok = self.client.connect()
         if ok:
-            console.print("[gabs.success]✓[/gabs.success] [gabs.muted]connected to broker[/gabs.muted]          ")
+            console.print("[gabs.success]✓[/gabs.success] [gabs.muted]connected to GitHub[/gabs.muted]          ")
             return True
         else:
-            print_error(f"Could not connect to {self.config.broker_host}:{self.config.broker_port}")
-            print_info("Check your internet connection and try again.")
+            print_error("Could not connect to GitHub — check your token with /config")
+            print_info("Run [bold]gabs setup[/bold] to reconfigure.")
             return False
 
     def _disconnect(self) -> None:

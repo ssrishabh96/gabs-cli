@@ -90,7 +90,8 @@ def _do_setup(config: Config) -> None:
     if client.connect():
         print_success("GitHub connection verified                ")
     else:
-        print_warn("Could not reach GitHub — check your token and try again")
+        print_warn("Could not reach GitHub — run [bold]gabs setup[/bold] to try again")
+        return
 
     console.print()
     print_success("Setup complete!")
@@ -111,7 +112,7 @@ def _oneshot(query: str, config: Config) -> None:
 
     # Connect
     if not client.connect():
-        print_error(f"Could not connect to {config.broker_host}:{config.broker_port}")
+        print_error("Could not connect to GitHub — check your token")
         sys.exit(1)
 
     try:
@@ -205,16 +206,16 @@ def status():
     cfg = _ensure_config()
     client = GabsClient(cfg)
 
-    print_info(f"Connecting to {cfg.broker_host}:{cfg.broker_port}…")
+    print_info("Connecting to GitHub…")
 
     if client.connect(timeout=5):
         print_success("Connected ✓")
         print_info(f"Namespace: {cfg.namespace}")
-        print_info(f"Command topic: {cfg.cmd_topic}")
-        print_info(f"Response topic: {cfg.res_topic}")
+        print_info(f"GitHub repo: {cfg.github_repo}")
+        print_info(f"ntfy topic: {cfg.ntfy_res_topic}")
         client.disconnect()
     else:
-        print_error("Could not connect to broker")
+        print_error("Could not connect to GitHub")
 
 
 # Dynamic subcommands for built-in shortcuts
